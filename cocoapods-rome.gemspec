@@ -8,8 +8,7 @@ Gem::Specification.new do |spec|
   spec.version       = CocoapodsRome::VERSION
   spec.authors       = ["Boris Bügling"]
   spec.email         = ["boris@icculus.org"]
-  spec.summary       = %q{Rome makes it easy to build a list of frameworks for consumption outside of
-Xcode}
+  spec.summary       = %q{Rome makes it easy to build a list of frameworks for consumption outside of Xcode}
   spec.homepage      = "https://github.com/CocoaPods/Rome"
   spec.license       = "MIT"
 
@@ -21,6 +20,6 @@ Xcode}
   spec.add_dependency 'cocoapods', '>= 1.1.0', '< 2.0'
   spec.add_dependency "fourflusher", "~> 2.0"
 
-  spec.add_development_dependency "bundler", "~> 1.3"
+  spec.add_development_dependency "bundler", "~> 2.0"
   spec.add_development_dependency "rake"
 end
