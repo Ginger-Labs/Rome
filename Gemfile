@@ -3,6 +3,6 @@ source 'https://rubygems.org'
 gemspec
 
 group :development do
-  gem 'bacon'
+  gem 'bacon', '~> 1.0'
 end
 
