@@ -4,43 +4,21 @@ PLATFORMS = { 'iphonesimulator' => 'iOS',
               'appletvsimulator' => 'tvOS',
               'watchsimulator' => 'watchOS' }
 
-def build_for_iosish_platform(sandbox, build_dir, target, device, simulator, flags, configuration, build_xcframework=false)
+def build(sandbox, build_dir, target, configuration)
   deployment_target = target.platform_deployment_target
   target_label = target.cocoapods_target_label
 
-  xcodebuild(sandbox, build_dir, target_label, 'macosx', deployment_target, %W(-destination platform=macOS,variant=Mac\ Catalyst SUPPORTS_MACCATALYST=YES BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
-  xcodebuild(sandbox, build_dir, target_label, device, deployment_target, flags, configuration) 
-  xcodebuild(sandbox, build_dir, target_label, simulator, deployment_target, flags, configuration)
+  Pod::UI.puts 'Building framework for mac'
+  xcodebuild(sandbox, build_dir, target_label, 'macosx', deployment_target, %W(-destination platform=macOS,arch=arm64 SUPPORTS_MACCATALYST=YES BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
 
   spec_names = target.specs.map { |spec| [spec.root.name, spec.root.module_name] }.uniq
   spec_names.each do |root_name, module_name|
-    device_lib = "#{build_dir}/#{configuration}-#{device}/#{root_name}/#{module_name}.framework"
     catalyst_lib = "#{build_dir}/#{configuration}-maccatalyst/#{root_name}/#{module_name}.framework"
-    simulator_lib = "#{build_dir}/#{configuration}-#{simulator}/#{root_name}/#{module_name}.framework"
 
-    if build_xcframework
-      build_xcframework([device_lib, catalyst_lib, simulator_lib], build_dir, module_name)
-    else
-      executable_path = "#{build_dir}/#{root_name}"
-      build_universal_framework(device_lib, catalyst_lib, simulator_lib, build_dir, executable_path, module_name)
-    end
+    Pod::UI.puts 'Building xcframework'
+    build_xcframework([catalyst_lib], build_dir, module_name)
 
-    FileUtils.rm device_lib if File.file?(device_lib)
     FileUtils.rm catalyst_lib if File.file?(catalyst_lib)
-    FileUtils.rm simulator_lib if File.file?(simulator_lib)
-  end
-end
-
-def build_for_macos_platform(sandbox, build_dir, target, flags, configuration, build_xcframework=false)
-  target_label = target.cocoapods_target_label
-  xcodebuild(sandbox, target_label, flags, configuration)
-
-  spec_names = target.specs.map { |spec| [spec.root.name, spec.root.module_name] }.uniq
-  spec_names.each do |root_name, module_name|
-    if build_xcframework
-      framework = "#{build_dir}/#{configuration}/#{root_name}/#{module_name}.framework"
-      build_xcframework([framework], build_dir, module_name)
-    end
   end
 end
 
@@ -50,20 +28,6 @@ def xcodebuild(sandbox, build_dir, target, sdk='macOS', deployment_target=nil, f
   platform = PLATFORMS[sdk]
   args += Fourflusher::SimControl.new.destination(:oldest, platform, deployment_target) unless platform.nil?
   Pod::Executable.execute_command 'xcodebuild', args, true
-end
-
-def build_universal_framework(device_lib, simulator_lib, build_dir, destination, module_name)
-  device_executable = "#{device_lib}/#{module_name}"
-  simulator_executable = "#{simulator_lib}/#{module_name}"
-
-  raise Pod::Informative, 'Framework executables were not found in the expected location.' unless File.file?(device_executable) && File.file?(simulator_executable)
-
-  device_framework_lib = File.dirname(device_executable)
-  lipo_log = `lipo -create -output #{destination} #{device_executable} #{simulator_executable}`
-  puts lipo_log unless File.exist?(destination) 
-
-  FileUtils.mv destination, device_executable, :force => true
-  FileUtils.mv device_framework_lib, build_dir, :force => true
 end
 
 def build_xcframework(frameworks, build_dir, module_name)
@@ -106,13 +70,12 @@ end
 Pod::HooksManager.register('cocoapods-rome', :post_install) do |installer_context, user_options|
   enable_dsym = user_options.fetch('dsym', true)
   configuration = user_options.fetch('configuration', 'Debug')
-  build_xcframework = user_options.fetch('xcframework', false)
 
   flags = [] 
   
   # Setting SKIP_INSTALL=NO to access the built frameworks inside the archive created
   # instead of searching in Xcode’s default derived data folder
-  flags << "SKIP_INSTALL=NO" if build_xcframework
+  flags << "SKIP_INSTALL=NO"
 
   # Use custom flags passed via user options, if any
   flags += user_options["flags"] if user_options["flags"]
@@ -135,10 +98,7 @@ Pod::HooksManager.register('cocoapods-rome', :post_install) do |installer_contex
   targets = installer_context.umbrella_targets.select { |t| t.specs.any? }
   targets.each do |target|
     case target.platform_name
-    when :ios then build_for_iosish_platform(sandbox, build_dir, target, 'iphoneos', 'iphonesimulator', flags, configuration, build_xcframework)
-    when :osx then build_for_macos_platform(sandbox, build_dir, target, flags, configuration, build_xcframework)
-    when :tvos then build_for_iosish_platform(sandbox, build_dir, target, 'appletvos', 'appletvsimulator', flags, configuration, build_xcframework)
-    when :watchos then build_for_iosish_platform(sandbox, build_dir, target, 'watchos', 'watchsimulator', flags, configuration, build_xcframework)
+    when :ios then build(sandbox, build_dir, target, configuration)
     else raise "Unknown platform '#{target.platform_name}'" end
   end
 
@@ -146,7 +106,7 @@ Pod::HooksManager.register('cocoapods-rome', :post_install) do |installer_contex
 
   # Make sure the device target overwrites anything in the simulator build, otherwise iTunesConnect
   # can get upset about Info.plist containing references to the simulator SDK
-  build_type = build_xcframework ? "xcframework" : "framework"
+  build_type = "xcframework"
   frameworks = Pathname.glob("build/*/*/*.#{build_type}").reject { |f| f.to_s =~ /Pods[^.]+\.#{build_type}/ }
   frameworks += Pathname.glob("build/*.#{build_type}").reject { |f| f.to_s =~ /Pods[^.]+\.#{build_type}/ }
 
