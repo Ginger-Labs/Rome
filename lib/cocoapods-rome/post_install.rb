@@ -8,22 +8,25 @@ def build_for_iosish_platform(sandbox, build_dir, target, device, simulator, fla
   deployment_target = target.platform_deployment_target
   target_label = target.cocoapods_target_label
 
-  xcodebuild(sandbox, build_dir, target_label, device, deployment_target, flags, configuration)
+  xcodebuild(sandbox, build_dir, target_label, 'macosx', deployment_target, %W(-destination platform=macOS,variant=Mac\ Catalyst SUPPORTS_MACCATALYST=YES BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
+  xcodebuild(sandbox, build_dir, target_label, device, deployment_target, flags, configuration) 
   xcodebuild(sandbox, build_dir, target_label, simulator, deployment_target, flags, configuration)
 
   spec_names = target.specs.map { |spec| [spec.root.name, spec.root.module_name] }.uniq
   spec_names.each do |root_name, module_name|
     device_lib = "#{build_dir}/#{configuration}-#{device}/#{root_name}/#{module_name}.framework"
+    catalyst_lib = "#{build_dir}/#{configuration}-maccatalyst/#{root_name}/#{module_name}.framework"
     simulator_lib = "#{build_dir}/#{configuration}-#{simulator}/#{root_name}/#{module_name}.framework"
 
     if build_xcframework
-      build_xcframework([device_lib, simulator_lib], build_dir, module_name)
+      build_xcframework([device_lib, catalyst_lib, simulator_lib], build_dir, module_name)
     else
       executable_path = "#{build_dir}/#{root_name}"
-      build_universal_framework(device_lib, simulator_lib, build_dir, executable_path, module_name)
+      build_universal_framework(device_lib, catalyst_lib, simulator_lib, build_dir, executable_path, module_name)
     end
 
     FileUtils.rm device_lib if File.file?(device_lib)
+    FileUtils.rm catalyst_lib if File.file?(catalyst_lib)
     FileUtils.rm simulator_lib if File.file?(simulator_lib)
   end
 end
@@ -41,7 +44,7 @@ def build_for_macos_platform(sandbox, build_dir, target, flags, configuration, b
   end
 end
 
-def xcodebuild(sandbox, build_dir, target, sdk='macosx', deployment_target=nil, flags=nil, configuration)
+def xcodebuild(sandbox, build_dir, target, sdk='macOS', deployment_target=nil, flags=nil, configuration)
   args = %W(-derivedDataPath #{build_dir} -project #{sandbox.project_path.realdirpath} -scheme #{target} -configuration #{configuration} -sdk #{sdk})
   args += flags unless flags.nil?  
   platform = PLATFORMS[sdk]
@@ -124,7 +127,7 @@ Pod::HooksManager.register('cocoapods-rome', :post_install) do |installer_contex
   enable_debug_information(sandbox.project_path, configuration) if enable_dsym
 
   build_dir = sandbox_root.parent + 'build'
-  destination = sandbox_root.parent + 'Rome'
+  destination = sandbox_root.parent + '../../BinaryPods'
 
   Pod::UI.puts 'Building frameworks'
 
