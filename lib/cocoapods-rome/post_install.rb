@@ -8,17 +8,27 @@ def build(sandbox, build_dir, target, configuration)
   deployment_target = target.platform_deployment_target
   target_label = target.cocoapods_target_label
 
+  Pod::UI.puts 'Building framework for ios device'
+  xcodebuild(sandbox, build_dir, target_label, 'iphoneos', deployment_target, %W(SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
+
   Pod::UI.puts 'Building framework for mac'
-  xcodebuild(sandbox, build_dir, target_label, 'macosx', deployment_target, %W(-destination platform=macOS,arch=arm64 SUPPORTS_MACCATALYST=YES BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
+  xcodebuild(sandbox, build_dir, target_label, 'macosx', deployment_target, %W(-destination platform=macOS,arch=arm64 SKIP_INSTALL=NO SUPPORTS_MACCATALYST=YES BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
+
+  Pod::UI.puts 'Building framework for ios simulator'
+  xcodebuild(sandbox, build_dir, target_label, 'iphonesimulator', deployment_target, %W(SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES), configuration)
 
   spec_names = target.specs.map { |spec| [spec.root.name, spec.root.module_name] }.uniq
   spec_names.each do |root_name, module_name|
+    device_lib = "#{build_dir}/#{configuration}-iphoneos/#{root_name}/#{module_name}.framework"
     catalyst_lib = "#{build_dir}/#{configuration}-maccatalyst/#{root_name}/#{module_name}.framework"
+    simulator_lib = "#{build_dir}/#{configuration}-iphonesimulator/#{root_name}/#{module_name}.framework"
 
     Pod::UI.puts 'Building xcframework'
-    build_xcframework([catalyst_lib], build_dir, module_name)
+    build_xcframework([device_lib, catalyst_lib, simulator_lib], build_dir, module_name)
 
+    FileUtils.rm device_lib if File.file?(device_lib)
     FileUtils.rm catalyst_lib if File.file?(catalyst_lib)
+    FileUtils.rm simulator_lib if File.file?(simulator_lib)
   end
 end
 
